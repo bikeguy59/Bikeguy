@@ -1,0 +1,25 @@
+# Site settings — edit these to make the blog your own.
+title: Bikeguy
+author: Bikeguy
+email: ""
+description: >-
+  A personal blog about bikes, rides, and whatever else is on my mind.
+baseurl: "" # set to "/Bikeguy" if served from https://<user>.github.io/Bikeguy
+url: ""     # e.g. "https://bikeguy59.github.io"
+github_username: bikeguy59
+
+# Build settings
+theme: minima
+plugins:
+  - jekyll-feed
+  - jekyll-seo-tag
+
+permalink: /:year/:month/:day/:title/
+timezone: America/New_York
+
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - README.md
+  - vendor/
+  - .bundle/
