@@ -4,8 +4,8 @@ author: Bikeguy
 email: ""
 description: >-
   A personal blog about bikes, rides, and whatever else is on my mind.
-baseurl: "" # set to "/Bikeguy" if served from https://<user>.github.io/Bikeguy
-url: ""     # e.g. "https://bikeguy59.github.io"
+baseurl: "/Bikeguy" # set to "/Bikeguy" if served from https://<user>.github.io/Bikeguy
+url: "https://bikeguy59.github.io"     # e.g. "https://bikeguy59.github.io"
 github_username: bikeguy59
 
 # Build settings
