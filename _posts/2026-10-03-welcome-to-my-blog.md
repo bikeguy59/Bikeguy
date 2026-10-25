@@ -28,3 +28,8 @@ I lost the files to this project a long time ago, but in talking with my son, he
   <img src="{{ '/assets/images/bikedraw2.jpg' | relative_url }}" width="540" height="521" loading="lazy" alt="Scanned letter to the editor from Mike Cambron of Mike Cambron Cycles. He says the Fall 1985 article drew over 60 requests for the program, that a burglary after his move to Texas took some unanswered letters, and asks anyone still waiting to write again to his new address.">
   <figcaption>My follow-up letter to <em>Bike Tech</em>: more than 60 requests for the program, and a few lost to a burglar.</figcaption>
 </figure>
+
+## Try it
+
+The original BASIC source is gone, so I rebuilt BIKEDRAW as a browser app, green CRT and all, using the surviving plot as a guide.
+[Run BIKEDRAW]({{ '/bikedraw/' | relative_url }}).

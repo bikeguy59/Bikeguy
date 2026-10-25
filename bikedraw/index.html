@@ -1,0 +1,1179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BIKEDRAW</title>
+<meta name="description" content="An in-browser recreation of BIKEDRAW, a 1983 BASIC bicycle frame design program, on an emulated green-phosphor CRT.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --phos: #41ff74;
+    --phos-dim: #1f9a43;
+    --phos-hot: #c9ffd6;
+    --glow: rgba(65, 255, 116, 0.55);
+    --tube-bg: #021006;
+    --room: #101210;
+    --bezel: #c9c3b1;
+    --bezel-dark: #8f8a7b;
+    --ink: #3a382f;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    min-height: 100vh;
+    background: radial-gradient(ellipse at 50% 30%, #1d211d 0%, var(--room) 70%);
+    color: #b9c2b9;
+    font-family: "VT323", ui-monospace, "Courier New", monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px;
+  }
+
+  /* ---- Monitor housing ---- */
+  .monitor {
+    width: 100%;
+    max-width: 1080px;
+    background: linear-gradient(160deg, #dcd6c4 0%, var(--bezel) 45%, #b4ae9c 100%);
+    border-radius: 22px;
+    padding: 26px 26px 14px;
+    box-shadow:
+      0 30px 60px rgba(0, 0, 0, 0.6),
+      inset 0 2px 0 rgba(255, 255, 255, 0.5),
+      inset 0 -3px 0 rgba(0, 0, 0, 0.25);
+  }
+  .screen-recess {
+    background: #1b1c19;
+    border-radius: 30px;
+    padding: 14px;
+    box-shadow: inset 0 4px 14px rgba(0, 0, 0, 0.85), 0 1px 0 rgba(255, 255, 255, 0.45);
+  }
+  .screen {
+    position: relative;
+    height: min(78vh, 760px);
+    min-height: 520px;
+    display: flex;
+    flex-direction: column;
+    border-radius: 26px / 34px;
+    overflow: hidden;
+    background: radial-gradient(ellipse at 50% 45%, #07301a 0%, #031a0b 55%, var(--tube-bg) 100%);
+    box-shadow: inset 0 0 70px rgba(0, 0, 0, 0.9), inset 0 0 14px rgba(65, 255, 116, 0.12);
+    color: var(--phos);
+    text-shadow: 0 0 3px var(--glow), 0 0 10px rgba(65, 255, 116, 0.28);
+    font-size: 21px;
+    line-height: 1.05;
+    cursor: text;
+    animation: flicker 6s infinite steps(1);
+  }
+  /* Scanlines, vignette and glass glare sit above everything on the tube. */
+  .screen::before,
+  .screen::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 5;
+  }
+  .screen::before {
+    background:
+      radial-gradient(ellipse at 50% 50%, transparent 58%, rgba(0, 0, 0, 0.6) 100%),
+      linear-gradient(125deg, rgba(255, 255, 255, 0.055) 0%, transparent 28%);
+  }
+  .screen::after {
+    background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.32) 0 1px, transparent 1px 3px);
+    mix-blend-mode: multiply;
+  }
+  @keyframes flicker {
+    0%, 100% { opacity: 1; }
+    37% { opacity: 0.975; }
+    38% { opacity: 1; }
+    71% { opacity: 0.985; }
+    72% { opacity: 1; }
+  }
+
+  .status {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 26px 4px;
+    background: var(--phos);
+    color: var(--tube-bg);
+    text-shadow: none;
+    box-shadow: 0 0 12px var(--glow);
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .status span:last-child { overflow: hidden; text-overflow: ellipsis; }
+
+  .plotwrap {
+    position: relative;
+    flex: 1 1 58%;
+    min-height: 0;
+    margin: 4px 18px 0;
+  }
+  #cv { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+  .term {
+    flex: 1 1 42%;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 4px 26px 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    scrollbar-width: thin;
+    scrollbar-color: var(--phos-dim) transparent;
+  }
+  .term div { min-height: 1.05em; }
+  .term .dim { color: var(--phos-dim); text-shadow: 0 0 3px rgba(65, 255, 116, 0.25); }
+  .term .hot { color: var(--phos-hot); }
+  .term .inv {
+    display: inline;
+    background: var(--phos);
+    color: var(--tube-bg);
+    text-shadow: none;
+    box-shadow: 0 0 8px var(--glow);
+  }
+  .term .ln { cursor: pointer; }
+  .term .stmt { display: inline-block; min-width: 22ch; }
+  .term .rem { white-space: normal; }
+  .term .ln:hover, .term .ln:focus-visible { background: rgba(65, 255, 116, 0.14); outline: none; }
+
+  .prompt {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5ch;
+    padding: 2px 26px 6px;
+    margin: 0;
+  }
+  .prompt label { flex: none; }
+  #cmd {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: 0;
+    outline: 0;
+    padding: 0;
+    color: var(--phos);
+    caret-color: var(--phos);
+    font: inherit;
+    text-shadow: inherit;
+    text-transform: uppercase;
+  }
+  #cmd::placeholder { color: var(--phos-dim); opacity: 0.7; text-transform: none; }
+
+  .fkeys {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    padding: 4px 22px 14px;
+  }
+  .fkeys button {
+    font: inherit;
+    font-size: 19px;
+    line-height: 1;
+    padding: 3px 6px 2px;
+    background: transparent;
+    color: var(--phos);
+    border: 1px solid var(--phos-dim);
+    border-radius: 0;
+    text-shadow: inherit;
+    cursor: pointer;
+  }
+  .fkeys button b {
+    font-weight: normal;
+    background: var(--phos);
+    color: var(--tube-bg);
+    text-shadow: none;
+    padding: 0 3px;
+    margin-right: 4px;
+  }
+  .fkeys button:hover, .fkeys button:focus-visible {
+    outline: none;
+    background: rgba(65, 255, 116, 0.16);
+    box-shadow: 0 0 10px var(--glow);
+  }
+
+  .badge {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 6px 0;
+    color: var(--ink);
+    font-family: Helvetica, Arial, sans-serif;
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
+  }
+  .badge strong { font-size: 15px; letter-spacing: 0.18em; }
+  .badge .led {
+    margin-left: auto;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: #48ff7a;
+    box-shadow: 0 0 8px #48ff7a, inset 0 -2px 2px rgba(0, 0, 0, 0.3);
+  }
+  .foot {
+    max-width: 1080px;
+    width: 100%;
+    margin: 14px 0 0;
+    font-size: 19px;
+    color: #8c978c;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 6px 16px;
+  }
+  .foot a { color: var(--phos); text-decoration: none; text-shadow: 0 0 6px var(--glow); }
+  .foot a:hover { text-decoration: underline; }
+
+  @media (max-width: 640px) {
+    body { padding: 16px; }
+    .monitor { padding: 12px 12px 8px; border-radius: 14px; }
+    .screen-recess { padding: 6px; border-radius: 18px; }
+    .screen { height: auto; min-height: 0; font-size: 17px; border-radius: 16px / 20px; }
+    .status { padding: 7px 14px 3px; }
+    .plotwrap { flex: none; height: 64vw; min-height: 220px; margin: 2px 6px 0; }
+    .term { flex: none; height: 46vh; padding: 4px 14px 0; }
+    .term .stmt { display: block; min-width: 0; }
+    .term .rem { display: block; padding-left: 2ch; color: var(--phos-dim); }
+    .prompt { padding: 2px 14px 6px; }
+    .fkeys { padding: 4px 10px 12px; gap: 6px; }
+    .fkeys button { font-size: 16px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .screen { animation: none; }
+  }
+</style>
+</head>
+<body>
+<main class="monitor">
+  <div class="screen-recess">
+    <div class="screen" id="screen">
+      <div class="status"><span>BIKEDRAW 1.0</span><span id="status-right">FRAME DESIGN · CM</span></div>
+      <div class="plotwrap">
+        <canvas id="cv" role="img" aria-label="Line drawing of the bicycle frame described by the current parameters"></canvas>
+      </div>
+      <div class="term" id="term" aria-live="polite"></div>
+      <form class="prompt" id="cmdform" autocomplete="off">
+        <label for="cmd" id="cmdlabel">&gt;</label>
+        <input id="cmd" name="cmd" spellcheck="false" autocapitalize="characters" autocorrect="off" enterkeyhint="go" placeholder="type HELP, or edit a line: 1060 HANGLE=73">
+      </form>
+      <nav class="fkeys" aria-label="Function keys">
+        <button type="button" data-cmd="RUN"><b>F1</b>RUN</button>
+        <button type="button" data-cmd="LIST"><b>F2</b>LIST</button>
+        <button type="button" data-cmd="CHECK"><b>F3</b>CHECK</button>
+        <button type="button" data-cmd="RAKE"><b>F4</b>RAKE</button>
+        <button type="button" data-cmd="INPUT"><b>F5</b>INPUT</button>
+        <button type="button" data-cmd="PLOT"><b>F6</b>PLOT</button>
+        <button type="button" data-cmd="HELP"><b>F7</b>HELP</button>
+      </nav>
+    </div>
+  </div>
+  <div class="badge"><strong>NCR</strong><span>DECISION MATE V</span><i class="led" aria-hidden="true"></i></div>
+</main>
+<p class="foot">
+  <a href="../">&larr; back to the blog</a>
+  <span>BIKEDRAW (1983), recreated from the Fall 1985 <i>Bike Tech</i> article</span>
+</p>
+
+<script>
+(() => {
+  "use strict";
+
+  /* ------------------------------------------------------------------
+   * Parameters. Lines 1030-1110 are the nine inputs from the original
+   * program, with the values from its only surviving screenshot.
+   * Lines 1200-1210 are new: they drive Talbot's toe-clip check.
+   * ------------------------------------------------------------------ */
+  const PARAMS = [
+    { line: 1030, key: "STL",      raw: "62",       desc: "SEAT TUBE LENGTH",                 ask: "SEAT TUBE LENGTH (CM)",            min: 35, max: 75 },
+    { line: 1040, key: "TTL",      raw: "58.2",     desc: "TOP TUBE LENGTH",                  ask: "TOP TUBE LENGTH (CM)",             min: 35, max: 75 },
+    { line: 1050, key: "SANGLE",   raw: "72.5",     desc: "SEAT TUBE ANGLE",                  ask: "SEAT TUBE ANGLE (DEG)",            min: 60, max: 80 },
+    { line: 1060, key: "HANGLE",   raw: "72.5",     desc: "HEAD TUBE ANGLE",                  ask: "HEAD TUBE ANGLE (DEG)",            min: 60, max: 80 },
+    { line: 1070, key: "BBH",      raw: "25",       desc: "BOTTOM BRACKET HEIGHT",            ask: "BOTTOM BRACKET HEIGHT (CM)",       min: 18, max: 36 },
+    { line: 1080, key: "RAKE",     raw: "6.35",     desc: "FORK RAKE",                        ask: "FORK RAKE (CM)",                   min: 0,  max: 12 },
+    { line: 1090, key: "WHEELBSE", raw: "105",      desc: "WHEEL BASE LENGTH OF THE FRAME",   ask: "WHEEL BASE (CM)",                  min: 80, max: 130 },
+    { line: 1100, key: "WHEELRAD", raw: "33",       desc: "WHEEL RADIUS OF BOTH WHEELS",      ask: "WHEEL RADIUS INCL. TIRE (CM)",     min: 20, max: 40 },
+    { line: 1110, key: "DTI",      raw: "5.8*2.54", desc: "DOWN TUBE INTERSECT OF HEAD TUBE", ask: "DOWN TUBE INTERSECT OF HEAD TUBE (CM)", min: 6, max: 30 },
+    { line: 1200, key: "CRANK",    raw: "17",       desc: "CRANK LENGTH",                     ask: "CRANK LENGTH (CM)",                min: 14, max: 19, extra: true },
+    { line: 1210, key: "TOE",      raw: "9.5",      desc: "PEDAL AXLE TO TOE OF SHOE",        ask: "PEDAL AXLE TO TOE (CM)",           min: 5,  max: 15, extra: true },
+  ];
+  const ORIGINAL = Object.fromEntries(PARAMS.map(p => [p.key, p.raw]));
+
+  // Full-scale lug and headset allowances (cm) from Talbot's layout steps.
+  // Measure real parts when building; these are only placeholders.
+  const LUG = 1.6;      // top of seat lug above the TT/ST center-line intersection (5/8 in)
+  const HT_TOP = 2.9;   // head tube above the TT/HT intersection (1 1/8 in)
+  const HT_BOT = 3.5;   // head tube below the HT/DT intersection (1 3/8 in)
+  const STACK = 3.0;    // lower headset stack + crown race to crown underside (9/16 + 5/8 in)
+  const QUICK_OFFSET = 1.905; // Talbot's Quick line: neutral rake minus 3/4 in
+  const IN = 2.54;
+  const D2R = Math.PI / 180;
+
+  const STORE_KEY = "bikedraw.params.v1";
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* ---------------- State ---------------- */
+  const state = {
+    raw: { ...ORIGINAL },
+    dims: true,
+    tubes: false,
+    inputMode: null,
+    history: [],
+    histIdx: -1,
+    geo: null,
+  };
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORE_KEY) || "null");
+    if (saved && typeof saved === "object") {
+      for (const p of PARAMS) if (typeof saved[p.key] === "string" && evalExpr(saved[p.key]) !== null) state.raw[p.key] = saved[p.key];
+    }
+  } catch (e) { /* storage unavailable: use defaults */ }
+  function persist() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(state.raw)); } catch (e) { /* ignore */ }
+  }
+  function values() {
+    const v = {};
+    for (const p of PARAMS) v[p.key] = evalExpr(state.raw[p.key]);
+    return v;
+  }
+
+  /* Safe arithmetic only: digits, + - * / ( ) and dots. */
+  function evalExpr(s) {
+    s = String(s).trim();
+    if (!s || !/^[0-9+\-*/().\s]+$/.test(s)) return null;
+    try {
+      const v = Function('"use strict";return (' + s + ")")();
+      return Number.isFinite(v) ? v : null;
+    } catch (e) { return null; }
+  }
+
+  /* ---------------- Vector math ---------------- */
+  const v2 = (x, y) => ({ x, y });
+  const add = (a, b) => v2(a.x + b.x, a.y + b.y);
+  const sub = (a, b) => v2(a.x - b.x, a.y - b.y);
+  const mul = (a, k) => v2(a.x * k, a.y * k);
+  const dot = (a, b) => a.x * b.x + a.y * b.y;
+  const len = a => Math.hypot(a.x, a.y);
+  const lerp = (a, b, t) => v2(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
+
+  /* ------------------------------------------------------------------
+   * Geometry, laid out the way Talbot draws it: everything from the
+   * crank axis. World units are cm, x forward, y up, BB at the origin.
+   * ------------------------------------------------------------------ */
+  function geometry(p) {
+    const errors = [];
+    const sa = p.SANGLE * D2R, ha = p.HANGLE * D2R, R = p.WHEELRAD;
+
+    const sDir = v2(-Math.cos(sa), Math.sin(sa));     // up the seat tube
+    const STtop = mul(sDir, p.STL);                     // top of seat lug
+    const TTj = mul(sDir, p.STL - LUG);                 // TT/ST center-line intersection
+    const H1 = add(TTj, v2(p.TTL, 0));                  // TT/HT intersection (level top tube)
+    const d = v2(Math.cos(ha), -Math.sin(ha));          // down the head tube
+    const n = v2(Math.sin(ha), Math.cos(ha));           // perpendicular, forward
+    const H2 = add(H1, mul(d, p.DTI));                  // HT/DT intersection
+    const HTtop = add(H1, mul(d, -HT_TOP));
+    const HTbot = add(H2, mul(d, HT_BOT));
+    const tCrown = p.DTI + HT_BOT + STACK;
+    const crown = add(H1, mul(d, tCrown));
+
+    const axleY = R - p.BBH;
+    // Front axle: on the axle line, RAKE in front of the steering axis.
+    const tF = (H1.y + p.RAKE * Math.cos(ha) - axleY) / Math.sin(ha);
+    const F = add(add(H1, mul(d, tF)), mul(n, p.RAKE));
+    const Rr = v2(F.x - p.WHEELBSE, axleY);
+
+    if (tF - tCrown < 8) errors.push("HEAD TUBE TOO LOW: NO ROOM FOR A FORK (CHECK 1070, 1100, 1110)");
+    if (Rr.x > -(R * 0.5)) errors.push("WHEELBASE TOO SHORT: REAR AXLE IS NOT BEHIND THE BB (CHECK 1090)");
+    if (p.RAKE >= R) errors.push("RAKE LARGER THAN WHEEL RADIUS");
+
+    // Steering: trail from where the steering axis meets the ground.
+    const tG = (H1.y + p.BBH) / Math.sin(ha);
+    const groundX = H1.x + tG * Math.cos(ha);
+    const trail = groundX - F.x;
+    const neutral = R * Math.tan(((90 - p.HANGLE) / 2) * D2R);
+    const quick = neutral - QUICK_OFFSET;
+    const touring = (neutral + quick) / 2;
+
+    // Crown clearance: tire top measured along the head tube center line.
+    const w = sub(H1, F);
+    const b = dot(w, d), c = dot(w, w) - R * R;
+    const disc = b * b - c;
+    const tTire = disc >= 0 ? -b - Math.sqrt(disc) : null;
+    const crownClear = tTire === null ? null : tTire - tCrown;
+
+    // Tire to seat tube and to down tube (perpendicular distance minus radius).
+    const perp = (pt, u) => Math.abs(pt.x * u.y - pt.y * u.x);
+    const rearTireClear = perp(Rr, sDir) - R;
+    const dtDir = mul(H2, 1 / len(H2));
+    const frontTireDT = perp(F, dtDir) - R;
+
+    const frontCenter = len(F);
+    const toeGap = frontCenter - R - (p.CRANK + p.TOE);
+
+    return {
+      p, errors, sa, ha, R, sDir, STtop, TTj, H1, H2, d, n, HTtop, HTbot, crown, F, Rr, axleY,
+      chainstay: len(Rr), seatstay: len(sub(Rr, TTj)), downtube: len(H2),
+      headtube: HT_TOP + p.DTI + HT_BOT, fork: len(sub(F, crown)),
+      drop: p.BBH > 0 ? R - p.BBH : 0, trail, neutral, quick, touring,
+      crownClear, rearTireClear, frontTireDT, frontCenter, toeGap,
+    };
+  }
+
+  /* ------------------------------------------------------------------
+   * Stroke font: every character is a polyline on a 4 x 6 grid, the
+   * way plotter and vector-display fonts were built. Zero is slashed.
+   * ------------------------------------------------------------------ */
+  const GLYPH_SRC = {
+    A: "0,6 0,2 2,0 4,2 4,6|0,3.5 4,3.5", B: "0,0 3,0 4,1 4,2 3,3 0,3|3,3 4,4 4,5 3,6 0,6 0,0",
+    C: "4,1 3,0 1,0 0,1 0,5 1,6 3,6 4,5", D: "0,0 2,0 4,2 4,4 2,6 0,6 0,0",
+    E: "4,0 0,0 0,6 4,6|0,3 3,3", F: "4,0 0,0 0,6|0,3 3,3",
+    G: "4,1 3,0 1,0 0,1 0,5 1,6 3,6 4,5 4,3 2,3", H: "0,0 0,6|4,0 4,6|0,3 4,3",
+    I: "1,0 3,0|2,0 2,6|1,6 3,6", J: "4,0 4,5 3,6 1,6 0,5", K: "0,0 0,6|4,0 0,4|1,3 4,6",
+    L: "0,0 0,6 4,6", M: "0,6 0,0 2,3 4,0 4,6", N: "0,6 0,0 4,6 4,0",
+    O: "1,0 3,0 4,1 4,5 3,6 1,6 0,5 0,1 1,0", P: "0,6 0,0 3,0 4,1 4,2 3,3 0,3",
+    Q: "1,0 3,0 4,1 4,5 3,6 1,6 0,5 0,1 1,0|2,4 4,6", R: "0,6 0,0 3,0 4,1 4,2 3,3 0,3|2,3 4,6",
+    S: "4,1 3,0 1,0 0,1 0,2 1,3 3,3 4,4 4,5 3,6 1,6 0,5", T: "0,0 4,0|2,0 2,6",
+    U: "0,0 0,5 1,6 3,6 4,5 4,0", V: "0,0 2,6 4,0", W: "0,0 1,6 2,3 3,6 4,0",
+    X: "0,0 4,6|4,0 0,6", Y: "0,0 2,3 4,0|2,3 2,6", Z: "0,0 4,0 0,6 4,6",
+    0: "1,0 3,0 4,1 4,5 3,6 1,6 0,5 0,1 1,0|0.5,5 3.5,1", 1: "1,1 2,0 2,6|1,6 3,6",
+    2: "0,1 1,0 3,0 4,1 4,2 0,6 4,6", 3: "0,1 1,0 3,0 4,1 4,2 3,3 1,3|3,3 4,4 4,5 3,6 1,6 0,5",
+    4: "3,6 3,0 0,4 4,4", 5: "4,0 0,0 0,3 3,3 4,4 4,5 3,6 1,6 0,5",
+    6: "3,0 1,0 0,1 0,5 1,6 3,6 4,5 4,4 3,3 0,3", 7: "0,0 4,0 1,6",
+    8: "1,0 3,0 4,1 4,2 3,3 1,3 0,2 0,1 1,0|1,3 0,4 0,5 1,6 3,6 4,5 4,4 3,3",
+    9: "4,3 1,3 0,2 0,1 1,0 3,0 4,1 4,5 3,6 1,6",
+    ".": "2,5.6 2,6", ",": "2,5.2 1.4,7", "-": "1,3 3,3", "=": "0,2 4,2|0,4 4,4",
+    "'": "2,0 2,1.6", "/": "0,6 4,0", "(": "3,0 2,1 2,5 3,6", ")": "1,0 2,1 2,5 1,6",
+    ":": "2,1.6 2,2|2,4 2,4.4", "+": "2,1.5 2,4.5|0.5,3 3.5,3", "*": "2,1 2,5|0.5,2 3.5,4|3.5,2 0.5,4",
+    "%": "0,6 4,0|0,0 1,0 1,1 0,1 0,0|3,5 4,5 4,6 3,6 3,5", "?": "0,1 1,0 3,0 4,1 4,2 2,3 2,4|2,5.6 2,6",
+    "!": "2,0 2,4|2,5.6 2,6", '"': "1,0 1,1.6|3,0 3,1.6", "<": "4,0 0,3 4,6", ">": "0,0 4,3 0,6",
+  };
+  const GLYPHS = {};
+  for (const [k, s] of Object.entries(GLYPH_SRC)) {
+    GLYPHS[k] = s.split("|").map(seg => seg.trim().split(/\s+/).map(pt => pt.split(",").map(Number)));
+  }
+  // Returns screen-space polylines. (x, y) is the anchor; y is the vertical center.
+  function textPaths(str, x, y, h, align = "l") {
+    const u = h / 6, adv = u * 6;
+    const w = str.length * adv - u * 2;
+    let x0 = align === "c" ? x - w / 2 : align === "r" ? x - w : x;
+    const y0 = y - h / 2;
+    const out = [];
+    for (const ch of str.toUpperCase()) {
+      const g = GLYPHS[ch];
+      if (g) for (const pl of g) out.push({ pts: pl.map(([gx, gy]) => [x0 + gx * u, y0 + gy * u]) });
+      x0 += adv;
+    }
+    return out;
+  }
+
+  /* ------------------------------------------------------------------
+   * Scene: turns geometry into an ordered list of screen polylines.
+   * The order is the order the beam draws them.
+   * ------------------------------------------------------------------ */
+  function fitTransform(g, W, H, pad, opts) {
+    const p = g.p;
+    const minX = g.Rr.x - g.R - 4;
+    const maxX = g.F.x + g.R + 4;
+    const minY = -p.BBH - (opts.dims ? 9 : 2);
+    const maxY = Math.max(g.STtop.y, g.HTtop.y) + 5;
+    const s = Math.min((W - pad * 2) / (maxX - minX), (H - pad * 2) / (maxY - minY));
+    const ox = (W - (maxX - minX) * s) / 2 - minX * s;
+    const oy = (H + (maxY - minY) * s) / 2 + minY * s;
+    const tf = pt => [ox + pt.x * s, oy - pt.y * s];
+    tf.s = s;
+    return tf;
+  }
+
+  function buildScene(g, tf, opts) {
+    const out = [];
+    const s = tf.s;
+    const p = g.p;
+    const line = (pts, dash) => out.push({ pts: pts.map(tf), dash });
+    const arc = (c, r, a0, a1, dash, segs) => {
+      const n = segs || Math.max(12, Math.ceil(Math.abs(a1 - a0) * r * s / 6));
+      const pts = [];
+      for (let i = 0; i <= n; i++) {
+        const a = a0 + (a1 - a0) * (i / n);
+        pts.push(v2(c.x + r * Math.cos(a), c.y + r * Math.sin(a)));
+      }
+      line(pts, dash);
+    };
+    const label = (text, pt, dx = 0, dy = 0, align = "c", h = opts.textH) => {
+      const [x, y] = tf(pt);
+      out.push(...textPaths(text, x + dx, y + dy, h, align));
+    };
+    const tubeOutline = (a, b, dia) => {
+      const u = mul(sub(b, a), 1 / len(sub(b, a)));
+      const nn = mul(v2(-u.y, u.x), dia / 2);
+      line([add(a, nn), add(b, nn)]);
+      line([sub(a, nn), sub(b, nn)]);
+    };
+
+    // Axle line across the whole drawing, as in the 1983 screenshot.
+    line([v2(g.Rr.x - g.R - 3, g.axleY), v2(g.F.x + g.R + 3, g.axleY)]);
+    arc(g.Rr, g.R, Math.PI, -Math.PI);
+    arc(g.F, g.R, Math.PI, 3 * Math.PI);
+    arc(g.Rr, 0.6, 0, 2 * Math.PI, false, 10);
+    arc(g.F, 0.6, 0, 2 * Math.PI, false, 10);
+
+    const BB = v2(0, 0);
+    if (opts.tubes) {
+      tubeOutline(BB, g.STtop, 2.86);
+      tubeOutline(g.TTj, g.H1, 2.54);
+      tubeOutline(g.HTtop, g.HTbot, 3.17);
+      tubeOutline(BB, g.H2, 2.86);
+      tubeOutline(BB, g.Rr, 1.6);
+      tubeOutline(g.TTj, g.Rr, 1.4);
+    } else {
+      line([BB, g.STtop]);
+      line([g.TTj, g.H1]);
+      line([g.HTtop, g.HTbot]);
+      line([BB, g.H2]);
+      line([BB, g.Rr]);
+      line([g.TTj, g.Rr]);
+    }
+    // Steerer to crown, then a curved blade to the axle.
+    line([g.HTbot, g.crown], true);
+    const tQ = dot(sub(g.F, g.H1), g.d);
+    const Q = add(g.H1, mul(g.d, tQ));
+    // Cubic: leaves the crown along the steering axis, ends parallel to it
+    // at the axle, so the rake bend sits low on the blade.
+    const reach = len(sub(Q, g.crown));
+    const c1 = lerp(g.crown, Q, 0.55);
+    const c2 = sub(g.F, mul(g.d, reach * 0.3));
+    const blade = [];
+    for (let i = 0; i <= 24; i++) {
+      const t = i / 24, u = 1 - t;
+      blade.push(add(add(mul(g.crown, u * u * u), mul(c1, 3 * u * u * t)), add(mul(c2, 3 * u * t * t), mul(g.F, t * t * t))));
+    }
+    line(blade);
+    line([v2(g.crown.x - g.n.x * 2.6, g.crown.y - g.n.y * 2.6), v2(g.crown.x + g.n.x * 2.6, g.crown.y + g.n.y * 2.6)]);
+
+    // Crank circle and BB shell (the ellipse and small circle in the screenshot).
+    arc(BB, p.CRANK, Math.PI / 2, Math.PI / 2 + 2 * Math.PI);
+    arc(BB, 1.9, 0, 2 * Math.PI, false, 16);
+    // Talbot's toe-clip compass: crank + pedal-to-toe, swung toward the front wheel.
+    arc(BB, p.CRANK + p.TOE, -0.55, 0.75, true);
+
+    if (opts.dims) {
+      const r = 26 / s;
+      // Seat tube angle, at the TT/ST intersection.
+      arc(g.TTj, r, 0, -g.sa, false, 14);
+      label(p.SANGLE.toFixed(1), add(g.TTj, v2(Math.cos(-g.sa / 2) * r * 2.5, Math.sin(-g.sa / 2) * r * 2.5)));
+      // Head tube angle, at the TT/HT intersection, outside the frame.
+      arc(g.H1, r, 0, -g.ha, false, 14);
+      label(p.HANGLE.toFixed(1), add(g.H1, v2(Math.cos(-g.ha / 2) * r * 2.1, Math.sin(-g.ha / 2) * r * 2.1)), 4, 0, "l");
+      // Top tube and seat tube lengths.
+      label(p.TTL.toFixed(1), lerp(g.TTj, g.H1, 0.5), 0, -opts.textH * 1.1);
+      label(p.STL.toFixed(1), lerp(v2(0, 0), g.STtop, 0.78), -opts.textH * 1.3, 0, "r");
+      label("CS " + g.chainstay.toFixed(1), lerp(v2(0, 0), g.Rr, 0.66), 0, opts.textH * 1.3);
+      // Wheelbase dimension line under the wheels.
+      const yD = -p.BBH - 4.5;
+      line([v2(g.Rr.x, g.axleY - 1.5), v2(g.Rr.x, yD - 1.2)], true);
+      line([v2(g.F.x, g.axleY - 1.5), v2(g.F.x, yD - 1.2)], true);
+      const ah = 1.6;
+      line([v2(g.Rr.x + ah, yD + ah * 0.5), v2(g.Rr.x, yD), v2(g.F.x, yD), v2(g.F.x - ah, yD + ah * 0.5)]);
+      line([v2(g.Rr.x + ah, yD - ah * 0.5), v2(g.Rr.x, yD)]);
+      line([v2(g.F.x - ah, yD - ah * 0.5), v2(g.F.x, yD)]);
+      label("WB " + p.WHEELBSE.toFixed(1), v2((g.Rr.x + g.F.x) / 2, yD), 0, opts.textH * 1.1);
+      label("RAKE " + p.RAKE.toFixed(2), g.F, 0, -opts.textH * 1.4 - g.R * s * 0.15);
+    }
+    if (opts.title) {
+      out.push(...textPaths(opts.title, opts.textH * 0.4, opts.textH * 1.1, opts.textH * 1.15, "l"));
+    }
+    return out;
+  }
+
+  /* ------------------------------------------------------------------
+   * Phosphor renderer with a beam that traces the drawing.
+   * ------------------------------------------------------------------ */
+  const cv = document.getElementById("cv");
+  const ctx = cv.getContext("2d");
+  const ghost = document.createElement("canvas");
+  let paths = [], totalLen = 0, anim = null, dpr = 1;
+
+  function pathLengths(list) {
+    let total = 0;
+    for (const pth of list) {
+      let l = 0;
+      for (let i = 1; i < pth.pts.length; i++) l += Math.hypot(pth.pts[i][0] - pth.pts[i - 1][0], pth.pts[i][1] - pth.pts[i - 1][1]);
+      pth.len = Math.max(l, 1);
+      total += pth.len;
+    }
+    return total;
+  }
+
+  // Strokes paths up to `limit` px of beam travel. Returns the beam position.
+  function strokeUpTo(c, list, limit, style) {
+    const solid = new Path2D(), dashed = new Path2D();
+    let used = 0, beam = null;
+    for (const pth of list) {
+      if (used >= limit) break;
+      const target = pth.dash ? dashed : solid;
+      const pts = pth.pts;
+      target.moveTo(pts[0][0], pts[0][1]);
+      let remain = limit - used;
+      for (let i = 1; i < pts.length; i++) {
+        const seg = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+        if (seg <= remain) {
+          target.lineTo(pts[i][0], pts[i][1]);
+          remain -= seg;
+          beam = pts[i];
+        } else {
+          const t = remain / seg;
+          beam = [pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * t, pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * t];
+          target.lineTo(beam[0], beam[1]);
+          remain = 0;
+          break;
+        }
+      }
+      used += pth.len;
+    }
+    style(c, solid, dashed);
+    return used > limit ? beam : null;
+  }
+
+  function phosphorStyle(c, solid, dashed) {
+    c.lineCap = "round";
+    c.lineJoin = "round";
+    for (const [pathObj, dash] of [[solid, []], [dashed, [5 * dpr, 5 * dpr]]]) {
+      c.setLineDash(dash);
+      c.shadowBlur = 11 * dpr;
+      c.shadowColor = "rgba(65,255,116,0.85)";
+      c.strokeStyle = "rgba(65,255,116,0.95)";
+      c.lineWidth = 1.7 * dpr;
+      c.stroke(pathObj);
+      c.shadowBlur = 0;
+      c.strokeStyle = "rgba(205,255,218,0.75)";
+      c.lineWidth = 0.7 * dpr;
+      c.stroke(pathObj);
+    }
+    c.setLineDash([]);
+  }
+
+  function rebuildScene() {
+    const rect = cv.getBoundingClientRect();
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const W = Math.max(1, Math.round(rect.width * dpr)), H = Math.max(1, Math.round(rect.height * dpr));
+    if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+    if (!state.geo || state.geo.errors.length) { paths = []; totalLen = 0; return; }
+    const textH = Math.max(9 * dpr, Math.min(15 * dpr, W / 72));
+    const opts = { dims: state.dims, tubes: state.tubes, textH, title: "BIKEDRAW" };
+    const tf = fitTransform(state.geo, W, H, textH * 1.6, opts);
+    paths = buildScene(state.geo, tf, opts);
+    totalLen = pathLengths(paths);
+  }
+
+  function drawStatic() {
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    strokeUpTo(ctx, paths, Infinity, phosphorStyle);
+  }
+
+  function startTrace() {
+    // Keep the old picture as a fading afterglow.
+    ghost.width = cv.width; ghost.height = cv.height;
+    ghost.getContext("2d").drawImage(cv, 0, 0);
+    rebuildScene();
+    if (reduceMotion) { drawStatic(); return; }
+    const dur = Math.min(3200, Math.max(1500, totalLen / (dpr * 2.4)));
+    anim = { start: performance.now(), dur };
+    requestAnimationFrame(frame);
+  }
+
+  function frame(now) {
+    if (!anim) return;
+    const el = now - anim.start;
+    const k = Math.min(1, el / anim.dur);
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    if (el < 700) {
+      ctx.globalAlpha = 0.85 * (1 - el / 700);
+      ctx.drawImage(ghost, 0, 0);
+      ctx.globalAlpha = 1;
+    }
+    const eased = 1 - Math.pow(1 - k, 1.6);
+    const beam = strokeUpTo(ctx, paths, eased * totalLen, phosphorStyle);
+    if (beam && k < 1) {
+      const gr = ctx.createRadialGradient(beam[0], beam[1], 0, beam[0], beam[1], 9 * dpr);
+      gr.addColorStop(0, "rgba(235,255,240,1)");
+      gr.addColorStop(0.3, "rgba(120,255,160,0.7)");
+      gr.addColorStop(1, "rgba(65,255,116,0)");
+      ctx.fillStyle = gr;
+      ctx.beginPath();
+      ctx.arc(beam[0], beam[1], 9 * dpr, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (k < 1 || el < 700) requestAnimationFrame(frame);
+    else { anim = null; drawStatic(); }
+  }
+
+  new ResizeObserver(() => {
+    rebuildScene();
+    if (!anim) drawStatic();
+  }).observe(cv);
+
+  /* ---------------- Terminal ---------------- */
+  const term = document.getElementById("term");
+  const cmd = document.getElementById("cmd");
+  const cmdLabel = document.getElementById("cmdlabel");
+  const queue = [];
+  let pumping = false;
+
+  function print(text = "", cls = "", line = null, rem = null) { queue.push({ text, cls, line, rem }); pump(); }
+  function pump() {
+    if (pumping) return;
+    pumping = true;
+    const step = () => {
+      const it = queue.shift();
+      if (!it) { pumping = false; return; }
+      const div = document.createElement("div");
+      if (it.cls) div.className = it.cls;
+      if (it.cls === "inv-line") {
+        const span = document.createElement("span");
+        span.className = "inv";
+        span.textContent = it.text;
+        div.appendChild(span);
+      } else if (it.rem) {
+        const st = document.createElement("span");
+        st.className = "stmt";
+        st.textContent = it.text;
+        const rm = document.createElement("span");
+        rm.className = "rem";
+        rm.textContent = it.rem;
+        div.append(st, rm);
+      } else {
+        div.textContent = it.text;
+      }
+      if (it.line) {
+        div.classList.add("ln");
+        div.tabIndex = 0;
+        div.title = "Click to edit this line";
+        const fill = () => { cmd.value = it.line; cmd.focus(); cmd.setSelectionRange(cmd.value.length, cmd.value.length); };
+        div.addEventListener("click", fill);
+        div.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); fill(); } });
+      }
+      term.appendChild(div);
+      while (term.childElementCount > 500) term.firstElementChild.remove();
+      term.scrollTop = term.scrollHeight;
+      if (reduceMotion) step(); else setTimeout(step, 14);
+    };
+    step();
+  }
+
+  const pad = (s, n) => String(s).padEnd(n);
+  const lpad = (s, n) => String(s).padStart(n);
+  const inch = cm => (cm / IN).toFixed(2);
+
+  function listing(extra = true) {
+    for (const p of PARAMS) {
+      if (p.extra && !extra) continue;
+      const stmt = `${p.line} ${p.key}=${state.raw[p.key]}`;
+      print(stmt, "", stmt, `'${p.desc}`);
+    }
+  }
+
+  /* ---------------- Talbot checks ---------------- */
+  function steeringVerdict(g) {
+    const r = g.p.RAKE, tol = 0.15;
+    if (r > g.neutral + tol) return ["UNDERSTEER", "TALBOT CALLS IT 'WRETCHED'. SHORTEN RAKE.", true];
+    if (r > g.touring + tol) return ["NEAR NEUTRAL", "STABLE BUT UNRESPONSIVE AT SPEED.", false];
+    if (Math.abs(r - g.touring) <= tol) return ["TOURING LINE", "MIDWAY BETWEEN NEUTRAL AND QUICK.", false];
+    if (r > g.quick + tol) return ["SPORT", "BETWEEN QUICK AND THE TOURING LINE.", false];
+    if (r >= g.quick - tol) return ["QUICK LINE", "RACING / CRITERIUM OVERSTEER.", false];
+    return ["BELOW QUICK", "SHORTER THAN QUICK: TOO NERVOUS.", true];
+  }
+  function wheelbaseVerdict(wbIn) {
+    if (wbIn < 38.5) return "VERY SHORT: STIFF, HARSH";
+    if (wbIn <= 39.5) return "RACING (38.5-39.5 IN)";
+    if (wbIn < 40) return "SPORT";
+    if (wbIn <= 41) return "TOURING (40-41 IN)";
+    return "LONG: RESILIENT, TOURING/ATB";
+  }
+  function warnings(g) {
+    const p = g.p, w = [];
+    if (steeringVerdict(g)[2]) w.push(`RAKE ${p.RAKE.toFixed(2)}: ${steeringVerdict(g)[0]}`);
+    if (g.toeGap < 0) w.push(`TOE-CLIP OVERLAP ${(-g.toeGap).toFixed(1)} CM`);
+    if (g.crownClear !== null && g.crownClear < 0) w.push("FRONT TIRE HITS THE FORK CROWN");
+    if (g.rearTireClear < 0) w.push("REAR TIRE HITS THE SEAT TUBE");
+    else if (g.rearTireClear < 1) w.push("REAR TIRE NEARLY TOUCHES THE SEAT TUBE");
+    if (g.frontTireDT < 0) w.push("FRONT TIRE HITS THE DOWN TUBE");
+    if (p.SANGLE < 68 || p.SANGLE > 75) w.push(`SEAT ANGLE ${p.SANGLE} OUTSIDE 68-75`);
+    if (p.BBH / IN < 9.5) w.push("BB BELOW 9.5 IN: PEDAL STRIKE");
+    return w;
+  }
+
+  function report() {
+    const g = state.geo;
+    if (!g || g.errors.length) { geoErrors(); return; }
+    const p = g.p;
+    const row = (label, cm) => print(`  ${pad(label, 22)}${lpad(cm.toFixed(1), 7)} CM ${lpad(inch(cm), 7)} IN`);
+    print("");
+    print("TALBOT CHECKS", "inv-line");
+    print("'DESIGNING AND BUILDING YOUR OWN FRAMESET', 1984", "dim");
+    print("FRAME");
+    row("CHAINSTAY", g.chainstay);
+    row("SEAT STAY", g.seatstay);
+    row("DOWN TUBE", g.downtube);
+    row("HEAD TUBE", g.headtube);
+    row("FORK (AXLE TO CROWN)", g.fork);
+    row("FRONT CENTER", g.frontCenter);
+    row("BB DROP", g.drop);
+    row("BB HEIGHT", p.BBH);
+    print("STEERING");
+    print(`  NEUTRAL RAKE ${g.neutral.toFixed(2)}  QUICK ${g.quick.toFixed(2)}  TOURING ${g.touring.toFixed(2)}`);
+    const [sv, sd, bad] = steeringVerdict(g);
+    print(`  YOUR RAKE ${p.RAKE.toFixed(2)} -> ${sv}`, bad ? "hot" : "");
+    print(`  ${sd}`, bad ? "hot" : "dim");
+    row("TRAIL", g.trail);
+    print("WHEELBASE");
+    print(`  ${p.WHEELBSE.toFixed(1)} CM = ${inch(p.WHEELBSE)} IN -> ${wheelbaseVerdict(p.WHEELBSE / IN)}`);
+    print("CLEARANCES");
+    const cl = (label, cm, okMsg, badMsg) => print(`  ${pad(label, 22)}${lpad(cm.toFixed(1), 7)} CM  ${cm < 0 ? badMsg : okMsg}`, cm < 0 ? "hot" : "");
+    cl("TOE CLIP", g.toeGap, "CLEAR", "OVERLAP");
+    if (g.crownClear !== null) cl("TIRE TO CROWN", g.crownClear, "OK", "INTERFERES");
+    cl("REAR TIRE TO SEAT TUBE", g.rearTireClear, "OK", "INTERFERES");
+    cl("FRONT TIRE TO DOWN TUBE", g.frontTireDT, "OK", "INTERFERES");
+    if (g.toeGap < 0) print("  FIX: SHALLOWER HEAD ANGLE + MORE RAKE, THEN LONGER STAYS.", "dim");
+    print("ANGLES");
+    print(`  SEAT ${p.SANGLE.toFixed(1)}  (TALBOT RANGE 68-75, C.O.N.I. START 73.3)`, p.SANGLE < 68 || p.SANGLE > 75 ? "hot" : "");
+    print(`  HEAD ${p.HANGLE.toFixed(1)}`);
+    print("Ok");
+  }
+
+  function geoErrors() {
+    for (const e of state.geo.errors) print(`?GEOMETRY ERROR: ${e}`, "hot");
+    print("Ok");
+  }
+
+  function summary() {
+    const g = state.geo;
+    print(`CHAINSTAY ${g.chainstay.toFixed(1)}  TRAIL ${g.trail.toFixed(1)}  FRONT CTR ${g.frontCenter.toFixed(1)}`, "dim");
+    const w = warnings(g);
+    if (w.length) {
+      for (const m of w) print(`* ${m}`, "hot");
+      print("TYPE CHECK FOR TALBOT'S FULL REPORT", "dim");
+    } else {
+      print("NO TALBOT WARNINGS", "dim");
+    }
+  }
+
+  function run(showListing) {
+    state.geo = geometry(values());
+    persist();
+    if (state.geo.errors.length) { geoErrors(); return; }
+    startTrace();
+    if (showListing) {
+      print("");
+      print("BIKEDRAW - BICYCLE FRAME LAYOUT", "inv-line");
+      listing(false);
+      print("");
+    }
+    summary();
+    print("Ok");
+  }
+
+  /* ---------------- C.O.N.I. Table I-A ---------------- */
+  const TABLE_A = { 80: 51.0, 81: 51.7, 82: 52.4, 83: 53.1, 84: 53.7, 85: 54.3, 86: 54.9, 87: 55.5, 88: 56.1, 89: 56.7, 90: 57.5,
+    91: 57.9, 92: 58.5, 93: 59.0, 94: 59.5, 95: 60.0, 96: 60.5, 97: 60.9, 98: 61.3, 99: 61.7, 100: 62.1 };
+  const TABLE_BC = { 100: 53.0, 101: 53.4, 102: 53.8, 103: 54.1, 104: 54.4, 105: 54.7, 106: 55.0, 107: 55.3, 108: 55.6, 109: 55.9,
+    110: 56.2, 111: 56.5, 112: 56.8, 113: 57.1, 114: 57.4, 115: 57.7, 116: 58.0, 117: 58.3, 118: 58.6, 119: 58.8, 120: 59.0,
+    121: 59.2, 122: 59.4, 123: 59.6, 124: 59.8, 125: 60.0 };
+  function lookup(table, x) {
+    const keys = Object.keys(table).map(Number);
+    const lo = Math.min(...keys), hi = Math.max(...keys);
+    if (x < lo || x > hi) return null;
+    const a = Math.floor(x), b = Math.ceil(x);
+    return a === b ? table[a] : table[a] + (table[b] - table[a]) * (x - a);
+  }
+
+  /* ---------------- Commands ---------------- */
+  function setParam(p, rawExpr, quiet) {
+    const v = evalExpr(rawExpr);
+    if (v === null) { print("?SYNTAX ERROR", "hot"); return false; }
+    if (v < p.min || v > p.max) { print(`?ILLEGAL FUNCTION CALL: ${p.key} MUST BE ${p.min} TO ${p.max}`, "hot"); return false; }
+    state.raw[p.key] = rawExpr.replace(/\s+/g, "");
+    if (!quiet) print(`${p.line} ${p.key}=${state.raw[p.key]}`, "dim");
+    return true;
+  }
+
+  function help() {
+    print("");
+    print("COMMANDS", "inv-line");
+    print("  1060 HANGLE=73   EDIT A LINE (OR CLICK A LISTED LINE)");
+    print("  RAKE=4.5         EDIT BY NAME. ARITHMETIC OK: 5.8*2.54");
+    print("  RUN      (F1)    REDRAW AND LIST");
+    print("  LIST     (F2)    SHOW ALL PARAMETER LINES");
+    print("  CHECK    (F3)    TALBOT'S DESIGN AND CLEARANCE CHECKS");
+    print("  RAKE     (F4)    RAKE CHART. RAKE RACE|SPORT|TOUR|NEUTRAL SETS IT");
+    print("  INPUT    (F5)    ANSWER THE NINE QUESTIONS IN TURN");
+    print("  PLOT     (F6)    DOT-MATRIX PLOT, SAVED AS A PNG");
+    print("  SIZE A BC        C.O.N.I. SIZING FROM BODY MEASUREMENTS (CM)");
+    print("                   A = PUBIS TO FLOOR, BC = ARM + TORSO");
+    print("  DIM / TUBES      TOGGLE DIMENSIONS / TUBE OUTLINES");
+    print("  RESET            RESTORE THE 1983 SCREENSHOT VALUES");
+    print("  CLS, ABOUT");
+    print("ALL LENGTHS IN CM, ANGLES IN DEGREES.", "dim");
+    print("Ok");
+  }
+
+  function about() {
+    print("");
+    print("ABOUT BIKEDRAW", "inv-line");
+    print("WRITTEN IN BASIC IN 1983 FOR THE NCR DECISION MATE V BY");
+    print("MIKE CAMBRON, AMATEUR FRAME BUILDER, ENGINEER AND CYCLIST.");
+    print("FEATURED IN BIKE TECH, FALL 1985. OVER 60 READERS WROTE IN");
+    print("FOR A COPY. THE SOURCE IS LOST; ONE PLOT SURVIVES.");
+    print("");
+    print("THIS RECREATION FOLLOWS THAT PLOT'S NINE INPUTS AND ADDS");
+    print("CHECKS FROM RICHARD P. TALBOT'S 'DESIGNING AND BUILDING");
+    print("YOUR OWN FRAMESET' (2ND ED., 1984): RAKE LINES, C.O.N.I.");
+    print("SIZING, TOE-CLIP AND CROWN CLEARANCE.");
+    print("Ok");
+  }
+
+  function rakeCmd(arg) {
+    const g = state.geo;
+    if (!g || g.errors.length) { geoErrors(); return; }
+    const choices = { RACE: g.quick, RACING: g.quick, QUICK: g.quick, CRIT: g.quick, SPORT: (g.quick + g.touring) / 2,
+      TOUR: g.touring, TOURING: g.touring, NEUTRAL: g.neutral };
+    if (arg) {
+      const v = choices[arg];
+      if (v === undefined) { print("?SYNTAX ERROR: RAKE RACE|SPORT|TOUR|NEUTRAL", "hot"); return; }
+      if (setParam(PARAMS.find(p => p.key === "RAKE"), v.toFixed(2))) run(false);
+      return;
+    }
+    print("");
+    print(`RAKE FOR HEAD ${g.p.HANGLE.toFixed(1)}, WHEEL RADIUS ${g.R.toFixed(1)}`, "inv-line");
+    print("NEUTRAL = R * TAN((90 - HEAD) / 2)   QUICK = NEUTRAL - 3/4 IN", "dim");
+    const r = (name, cm, use) => print(`  ${pad(name, 10)}${lpad(cm.toFixed(2), 6)} CM ${lpad(inch(cm), 6)} IN  ${use}`);
+    r("NEUTRAL", g.neutral, "REFERENCE ONLY");
+    r("TOURING", g.touring, "GENERAL TOURING");
+    r("SPORT", (g.quick + g.touring) / 2, "SPORT RIDING");
+    r("QUICK", g.quick, "ROAD RACING, CRITERIUM");
+    const [sv, , bad] = steeringVerdict(g);
+    print(`  YOURS     ${lpad(g.p.RAKE.toFixed(2), 6)} CM ${lpad(inch(g.p.RAKE), 6)} IN  ${sv}`, bad ? "hot" : "");
+    print("NEVER UNDERSTEER. TYPE RAKE TOUR TO SET THE TOURING LINE.", "dim");
+    print("Ok");
+  }
+
+  function sizeCmd(args) {
+    const [a, bc] = args.map(evalExpr);
+    if (a === null || bc === null || a === undefined || bc === undefined) {
+      print("?SYNTAX ERROR: SIZE A BC  (E.G. SIZE 94 110)", "hot");
+      print("A = PUBIS BONE TO FLOOR, BAREFOOT. BC = SHOULDER TO WRIST", "dim");
+      print("FOLD + PUBIS TO TOP OF STERNUM. ALL IN CM.", "dim");
+      return;
+    }
+    const stl = lookup(TABLE_A, a), ttl = lookup(TABLE_BC, bc);
+    if (stl === null) { print("?OUT OF RANGE: TABLE I-A COVERS A = 80 TO 100", "hot"); return; }
+    if (ttl === null) { print("?OUT OF RANGE: TABLE I-A COVERS BC = 100 TO 125", "hot"); return; }
+    print(`C.O.N.I. TABLE I-A: SEAT TUBE ${stl.toFixed(1)}  TOP TUBE ${ttl.toFixed(1)}`);
+    setParam(PARAMS.find(p => p.key === "STL"), stl.toFixed(1));
+    setParam(PARAMS.find(p => p.key === "TTL"), ttl.toFixed(1));
+    print("TALBOT: START AT 73.3 SEAT ANGLE (1050 SANGLE=73.3)", "dim");
+    run(false);
+  }
+
+  function startInput() {
+    state.inputMode = { i: 0, list: PARAMS.filter(p => !p.extra) };
+    print("");
+    print("ENTER NINE PARAMETERS. RETURN KEEPS THE VALUE. ESC QUITS.", "dim");
+    askNext();
+  }
+  function askNext() {
+    const m = state.inputMode;
+    const p = m.list[m.i];
+    print(`${p.ask} [${state.raw[p.key]}]`);
+    cmdLabel.textContent = "?";
+    cmd.placeholder = "";
+  }
+  function endInput(cancelled) {
+    state.inputMode = null;
+    cmdLabel.textContent = ">";
+    cmd.placeholder = "type HELP, or edit a line: 1060 HANGLE=73";
+    if (cancelled) print("BREAK", "hot"); else run(true);
+  }
+  function inputAnswer(text) {
+    const m = state.inputMode;
+    const p = m.list[m.i];
+    print(`? ${text}`, "dim");
+    if (text.trim() !== "" && !setParam(p, text.trim(), true)) { askNext(); return; }
+    m.i++;
+    if (m.i >= m.list.length) endInput(false); else askNext();
+  }
+
+  function exec(line) {
+    const raw = line.trim();
+    if (!raw) return;
+    print(raw.toUpperCase());
+    const u = raw.toUpperCase().replace(/^LET\s+/, "");
+    let m;
+    if ((m = u.match(/^(\d+)\s*(?:([A-Z]+)\s*=\s*(.+))?$/))) {
+      const p = PARAMS.find(q => q.line === Number(m[1]));
+      if (!p) { print(`?UNDEFINED LINE NUMBER ${m[1]}`, "hot"); return; }
+      if (!m[2]) { print(`${p.line} ${p.key}=${state.raw[p.key]}`, "", `${p.line} ${p.key}=${state.raw[p.key]}`); return; }
+      if (m[2] !== p.key) { print(`?SYNTAX ERROR: LINE ${p.line} SETS ${p.key}`, "hot"); return; }
+      if (setParam(p, m[3], true)) run(false);
+      return;
+    }
+    if ((m = u.match(/^([A-Z]+)\s*=\s*(.+)$/))) {
+      const p = PARAMS.find(q => q.key === m[1]);
+      if (!p) { print(`?UNKNOWN VARIABLE ${m[1]}`, "hot"); return; }
+      if (setParam(p, m[2])) run(false);
+      return;
+    }
+    const [word, ...args] = u.split(/\s+/);
+    switch (word) {
+      case "RUN": run(true); break;
+      case "LIST": print(""); listing(true); print("Ok"); break;
+      case "CHECK": case "REPORT": report(); break;
+      case "RAKE": rakeCmd(args[0]); break;
+      case "SIZE": case "CONI": sizeCmd(args); break;
+      case "INPUT": startInput(); break;
+      case "PLOT": case "LPRINT": plot(); break;
+      case "DIM": case "DIMS":
+        state.dims = args[0] ? args[0] === "ON" : !state.dims;
+        print(`DIMENSIONS ${state.dims ? "ON" : "OFF"}`, "dim"); startTrace(); print("Ok"); break;
+      case "TUBES": case "OUTLINE":
+        state.tubes = args[0] ? args[0] === "ON" : !state.tubes;
+        print(`TUBE OUTLINES ${state.tubes ? "ON" : "OFF"}`, "dim"); startTrace(); print("Ok"); break;
+      case "RESET": case "NEW":
+        state.raw = { ...ORIGINAL };
+        print("RESTORED THE 1983 SCREENSHOT VALUES", "dim"); run(true); break;
+      case "CLS": queue.length = 0; term.textContent = ""; print("Ok"); break;
+      case "HELP": case "?": help(); break;
+      case "ABOUT": about(); break;
+      default: print("?SYNTAX ERROR  (TYPE HELP)", "hot");
+    }
+  }
+
+  /* ---------------- Dot-matrix plot ---------------- */
+  function plot() {
+    const g = state.geo;
+    if (!g || g.errors.length) { geoErrors(); return; }
+    print("PRINTING TO DOT-MATRIX PRINTER ...", "dim");
+    const W = 560, H = 760, DOT = 2;
+    const lo = document.createElement("canvas");
+    lo.width = W; lo.height = H;
+    const c = lo.getContext("2d");
+    c.fillStyle = "#fff";
+    c.fillRect(0, 0, W, H);
+    const textH = 9;
+    const opts = { dims: false, tubes: state.tubes, textH };
+    const tf = fitTransform(g, W - 40, 370, 10, opts);
+    const shifted = pt => { const [x, y] = tf(pt); return [x + 20, y + 24]; };
+    shifted.s = tf.s;
+    const list = buildScene(g, shifted, opts);
+    let y = 420;
+    for (const p of PARAMS.filter(q => !q.extra)) {
+      list.push(...textPaths(`${p.line} ${p.key}=${state.raw[p.key]}`, 30, y, textH, "l"));
+      list.push(...textPaths(`'${p.desc}`, 222, y, textH, "l"));
+      y += 17;
+    }
+    const caption = ["PLOT AND DIMENSIONS OF", "FRAME BY BIKEDRAW."];
+    c.strokeStyle = "#000";
+    c.lineCap = "round";
+    c.lineJoin = "round";
+    const strokeList = (lst, lw) => {
+      c.lineWidth = lw;
+      c.beginPath();
+      for (const pth of lst) {
+        c.moveTo(pth.pts[0][0], pth.pts[0][1]);
+        for (let i = 1; i < pth.pts.length; i++) c.lineTo(pth.pts[i][0], pth.pts[i][1]);
+      }
+      c.stroke();
+    };
+    strokeList(list, 1.1);
+    const cap = [];
+    caption.forEach((t, i) => cap.push(...textPaths(t, 40, y + 34 + i * 30, 20, "l")));
+    strokeList(cap, 3.4);
+    c.lineWidth = 2.5;
+    c.strokeRect(9, 9, W - 18, H - 18);
+
+    // Re-render each dark pixel as a round print-head dot.
+    const img = c.getImageData(0, 0, W, H).data;
+    const out = document.createElement("canvas");
+    out.width = W * DOT; out.height = H * DOT;
+    const o = out.getContext("2d");
+    o.fillStyle = "#f8f6ef";
+    o.fillRect(0, 0, out.width, out.height);
+    o.fillStyle = "#151515";
+    for (let py = 0; py < H; py++) {
+      for (let px = 0; px < W; px++) {
+        const lum = img[(py * W + px) * 4];
+        if (lum < 150) {
+          o.globalAlpha = lum < 70 ? 0.95 : 0.7;
+          o.beginPath();
+          o.arc(px * DOT + DOT / 2, py * DOT + DOT / 2, DOT * 0.6, 0, Math.PI * 2);
+          o.fill();
+        }
+      }
+    }
+    o.globalAlpha = 1;
+    const a = document.createElement("a");
+    a.download = "bikedraw-plot.png";
+    a.href = out.toDataURL("image/png");
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    print("SAVED BIKEDRAW-PLOT.PNG", "dim");
+    print("Ok");
+  }
+
+  /* ---------------- Input wiring ---------------- */
+  document.getElementById("cmdform").addEventListener("submit", e => {
+    e.preventDefault();
+    const text = cmd.value;
+    cmd.value = "";
+    if (state.inputMode) { inputAnswer(text); return; }
+    if (text.trim()) { state.history.push(text); state.histIdx = state.history.length; }
+    exec(text);
+  });
+  cmd.addEventListener("keydown", e => {
+    if (e.key === "Escape" && state.inputMode) { e.preventDefault(); endInput(true); return; }
+    if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      if (!state.history.length || state.inputMode) return;
+      e.preventDefault();
+      state.histIdx = Math.max(0, Math.min(state.history.length, state.histIdx + (e.key === "ArrowUp" ? -1 : 1)));
+      cmd.value = state.history[state.histIdx] || "";
+    }
+  });
+  const FKEYS = { F1: "RUN", F2: "LIST", F3: "CHECK", F4: "RAKE", F5: "INPUT", F6: "PLOT", F7: "HELP" };
+  document.addEventListener("keydown", e => {
+    if (FKEYS[e.key]) {
+      e.preventDefault();
+      if (state.inputMode) endInput(true);
+      exec(FKEYS[e.key]);
+    }
+  });
+  document.querySelectorAll(".fkeys button").forEach(b => b.addEventListener("click", () => {
+    if (state.inputMode) endInput(true);
+    exec(b.dataset.cmd);
+    cmd.focus({ preventScroll: true });
+  }));
+  document.getElementById("screen").addEventListener("click", e => {
+    if (e.target.closest("button, .ln, a") || window.getSelection().toString()) return;
+    cmd.focus({ preventScroll: true });
+  });
+
+  /* ---------------- Boot ---------------- */
+  print("NCR DECISION MATE V", "dim");
+  print("BASIC", "dim");
+  print("Ok", "dim");
+  print('LOAD "BIKEDRAW"', "dim");
+  print("Ok", "dim");
+  print("RUN", "dim");
+  const startup = () => {
+    run(true);
+    print("TYPE HELP FOR COMMANDS. CLICK A LINE TO EDIT IT.", "dim");
+  };
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(startup); else startup();
+  if (window.matchMedia("(pointer: fine)").matches) cmd.focus({ preventScroll: true });
+})();
+</script>
+</body>
+</html>
